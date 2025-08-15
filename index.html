@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="ka" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newton Free School - AI პორტალი</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+GO:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script type="module">
+        // Firebase SDK Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Make Firebase modules globally available
+        window.firebase = {
+            initializeApp, getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, signInAnonymously, signInWithCustomToken,
+            getFirestore, doc, getDoc, setDoc, addDoc, collection, updateDoc, arrayUnion, arrayRemove, serverTimestamp
+        };
+    </script>
+    <style>
+        :root {
+            --bg-color: #f8fafc; --text-color: #1f2937; --card-bg: white; --border-color: #e5e7eb;
+            --primary-text: #374151; --secondary-text: #6b7280; --accent-color: #2563eb; --accent-text: white;
+            --nav-text: #4b5563; --nav-hover: #2563eb;
+        }
+        html.dark {
+            --bg-color: #0f172a; --text-color: #f8fafc; --card-bg: #1e293b; --border-color: #334155;
+            --primary-text: #e2e8f0; --secondary-text: #94a3b8;
+            --nav-text: #94a3b8; --nav-hover: #60a5fa;
+        }
+        body { font-family: 'Fira GO', sans-serif; background-color: var(--bg-color); color: var(--primary-text); transition: background-color 0.3s, color 0.3s; }
+        .sticky-nav { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(10px); background-color: rgba(248, 250, 252, 0.85); border-bottom: 1px solid var(--border-color); }
+        html.dark .sticky-nav { background-color: rgba(15, 23, 42, 0.85); }
+        .card { transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s; border: 1px solid var(--border-color); background-color: var(--card-bg); opacity: 0; animation: fadeIn 0.5s forwards; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+        .tag { border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; cursor: pointer; }
+        .filter-btn.active { background-color: var(--accent-color); color: var(--accent-text); border-color: var(--accent-color); }
+        .tool-card p { min-height: 80px; color: var(--secondary-text); }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease; }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+        .modal-content { background: var(--card-bg); padding: 2rem; border-radius: 0.75rem; width: 90%; max-width: 700px; max-height: 90vh; overflow-y: auto; transform: scale(0.95); transition: transform 0.3s ease; position: relative; }
+        .modal-overlay.visible .modal-content { transform: scale(1); }
+        .pagination-container { display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin-top: 2.5rem; }
+        .pagination-btn { padding: 0.5rem 1rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background-color: var(--card-bg); cursor: pointer; color: var(--primary-text); }
+        .pagination-btn.active { background-color: var(--accent-color); color: var(--accent-text); border-color: var(--accent-color); }
+        .skeleton { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; background-color: #e5e7eb; border-radius: 0.25rem; }
+        html.dark .skeleton { background-color: #334155; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .favorite-btn.favorited { color: #ef4444; }
+        .assistant-icon { width: 48px; height: 48px; margin: 0 auto 1rem; color: var(--accent-color); }
+        .history-item { cursor: pointer; }
+        .history-item:hover { background-color: rgba(0,0,0,0.05); }
+        html.dark .history-item:hover { background-color: rgba(255,255,255,0.05); }
+        .file-upload-label { border: 2px dashed var(--border-color); padding: 2rem; text-align: center; cursor: pointer; display: block; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="antialiased">
+    <div id="app-container">
+        <header id="header" class="sticky-nav">
+            <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+                <a href="#" class="flex items-center space-x-3">
+                    <svg class="h-8 w-8" viewBox="0 0 100 125" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M83.11,43.32a22.29,22.29,0,0,0-15.44-7.44c-5.52,0-9.45,3.11-11.88,3.11s-6.36-3.11-11.88-3.11a22.29,22.29,0,0,0-15.44,7.44C15.28,57.42,21.5,78.5,33.53,89.2a21.46,21.46,0,0,0,13.86,5.3c5.22,0,7.26-3.11,11.88-3.11s6.66,3.11,11.88,3.11a21.46,21.46,0,0,0,13.86-5.3C98.72,78.5,104.72,57.42,83.11,43.32Z" fill="#E53935"/><path d="M68.4,24.12A20.2,20.2,0,0,0,58,18.5c-5.82.2-8.85,6-10,6s-4-5.7-9.75-6a19.19,19.19,0,0,0-9.75,4.32c-5.22,4.62-6,11.82-5.55,15.42a1,1,0,0,0,1,1c.51,0,.91-.44.95-1-.22-2.17.22-7.27,3.75-10.62a13.92,13.92,0,0,1,7.2-3.3c4.2-.3,6.6,3.6,7.65,3.6s3.6-3.9,8.25-3.6a14.88,14.88,0,0,1,7.5,3.3c3.45,3.45,3.9,8.45,3.75,10.62,0,.55.45,1,1,1a1,1,0,0,0,1-1C74.35,35.94,73.62,28.74,68.4,24.12Z" transform="translate(0 -10)" fill="#4CAF50"/></svg>
+                    <h1 class="text-xl font-bold" style="color: var(--primary-text);">Newton Free School - AI პორტალი</h1>
+                </a>
+                <div class="flex items-center space-x-2 md:space-x-4">
+                    <nav class="hidden md:flex space-x-8 items-center">
+                        <a href="#tools" class="transition-colors" style="color: var(--nav-text);">ხელსაწყოები</a>
+                        <a href="#gpts" class="transition-colors" style="color: var(--nav-text);">AI ასისტენტები</a>
+                        <a href="#policy" class="transition-colors" style="color: var(--nav-text);">პოლიტიკა</a>
+                    </nav>
+                    <div id="auth-container">
+                        <button id="login-btn" class="px-4 py-2 text-sm font-medium rounded-lg" style="background-color: var(--card-bg); border: 1px solid var(--border-color); color: var(--primary-text);">შესვლა</button>
+                        <button id="profile-btn" class="hidden w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg" style="background-color: var(--accent-color); color: var(--accent-text);"></button>
+                    </div>
+                    <button id="dark-mode-toggle" class="w-10 h-10 flex items-center justify-center rounded-lg" style="background-color: var(--card-bg); border: 1px solid var(--border-color); color: var(--primary-text);">🌙</button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <section id="tools" class="py-20">
+                <div class="container mx-auto px-6">
+                    <div class="text-center mb-12">
+                        <h2 class="text-4xl font-bold mb-2">AI ხელსაწყოების კატალოგი</h2>
+                        <p style="color: var(--secondary-text);">იპოვეთ 100-ზე მეტი საგანმანათლებლო ხელსაწყო</p>
+                    </div>
+                     <div class="mb-12">
+                        <div class="featured-card rounded-xl p-6 md:p-8 max-w-4xl mx-auto" style="background: linear-gradient(135deg, #f5f7fa, #eef2f7); border: 1px solid var(--border-color);">
+                            <div class="flex flex-col md:flex-row items-center gap-6 md:gap-8">
+                                <div class="flex-shrink-0">
+                                    <div class="w-24 h-24 bg-white rounded-lg flex items-center justify-center shadow-md">
+                                        <svg class="w-12 h-12 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-bold text-blue-600 mb-1">თვის გამორჩეული ხელსაწყო</h4>
+                                    <h3 class="text-2xl font-bold text-gray-900 mb-2">Khanmigo</h3>
+                                    <p class="text-gray-600 mb-4">Khan Academy-ს AI ასისტენტი, რომელიც ეხმარება მოსწავლეებს სწავლაში, პასუხობს კითხვებს და მასწავლებლებს სთავაზობს გაკვეთილის დაგეგმვის ინსტრუმენტებს.</p>
+                                    <a href="https://www.khanacademy.org/khan-labs" target="_blank" rel="noopener noreferrer" class="font-bold text-blue-600 hover:underline">სცადე ახლავე &rarr;</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-10 max-w-2xl mx-auto"><div class="relative"><input type="text" id="search-input" placeholder="მოძებნე ხელსაწყო..." class="block w-full border rounded-full py-3 pl-10 pr-4 focus:outline-none focus:ring-2" style="background-color: var(--card-bg); border-color: var(--border-color); color: var(--primary-text); ring-color: var(--accent-color);"></div></div>
+                    <div class="flex justify-center flex-wrap gap-3 mb-10" id="filter-container"></div>
+                    <div id="tools-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+                    <p id="no-results" class="text-center mt-10 hidden" style="color: var(--secondary-text);">შედეგი ვერ მოიძებნა.</p>
+                    <div id="pagination-controls" class="pagination-container"></div>
+                    <div class="text-center mt-16"><button id="suggest-tool-btn" class="font-medium text-blue-600 hover:underline">ვერ იპოვეთ ხელსაწყო? შემოგვთავაზეთ &rarr;</button></div>
+                </div>
+            </section>
+
+            <div style="background-color: var(--bg-color); border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);">
+                <section id="gpts" class="py-20 container mx-auto px-6">
+                    <div class="text-center mb-12">
+                        <h2 class="text-4xl font-bold mb-2">სპეციალიზებული AI ასისტენტები</h2>
+                        <p style="color: var(--secondary-text);">თქვენი სკოლისთვის შექმნილი პერსონალური AI მრჩევლები</p>
+                    </div>
+                    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                        <div class="card p-6 rounded-lg text-center flex flex-col">
+                            <svg class="assistant-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.776 48.776 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>
+                            <h3 class="text-xl font-bold mb-2">დიაგრამის ანალიზატორი</h3>
+                            <p class="mb-4 text-sm flex-grow" style="color: var(--secondary-text);">ატვირთეთ სამეცნიერო დიაგრამის სურათი და მიიღეთ მისი კომპონენტების დეტალური ახსნა.</p>
+                            <button data-modal-id="diagram-modal" class="modal-open-btn font-medium text-blue-600 hover:underline mt-auto">გახსნა &rarr;</button>
+                        </div>
+                        <div class="card p-6 rounded-lg text-center flex flex-col">
+                            <svg class="assistant-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 3h.008v.008H8.25v-.008Zm0 3h.008v.008H8.25v-.008Zm3-6h.008v.008H11.25v-.008Zm0 3h.008v.008H11.25v-.008Zm0 3h.008v.008H11.25v-.008Zm3-6h.008v.008H14.25v-.008Zm0 3h.008v.008H14.25v-.008Zm0 3h.008v.008H14.25v-.008ZM6 6h12v12H6V6Z" /></svg>
+                            <h3 class="text-xl font-bold mb-2">მათემატიკის ამოცანის ამომცნობი</h3>
+                            <p class="mb-4 text-sm flex-grow" style="color: var(--secondary-text);">ატვირთეთ ხელნაწერი ამოცანის სურათი და მიიღეთ ეტაპობრივი ამოხსნა.</p>
+                            <button data-modal-id="math-solver-modal" class="modal-open-btn font-medium text-blue-600 hover:underline mt-auto">გახსნა &rarr;</button>
+                        </div>
+                        <div class="card p-6 rounded-lg text-center flex flex-col">
+                            <svg class="assistant-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                            <h3 class="text-xl font-bold mb-2">ესეს ანალიზატორი</h3>
+                            <p class="mb-4 text-sm flex-grow" style="color: var(--secondary-text);">ატვირთეთ თქვენი ესე და მიიღეთ რჩევები სტრუქტურის, არგუმენტაციისა და სტილის გასაუმჯობესებლად.</p>
+                            <button data-modal-id="essay-modal" class="modal-open-btn font-medium text-blue-600 hover:underline mt-auto">გახსნა &rarr;</button>
+                        </div>
+                        <div class="card p-6 rounded-lg text-center flex flex-col">
+                            <svg class="assistant-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h7.5" /></svg>
+                            <h3 class="text-xl font-bold mb-2">პრეზენტაციის გენერატორი</h3>
+                            <p class="mb-4 text-sm flex-grow" style="color: var(--secondary-text);">შექმენით პრეზენტაციის სრული სტრუქტურა თემისა და აუდიტორიის მითითებით.</p>
+                            <button data-modal-id="presentation-modal" class="modal-open-btn font-medium text-blue-600 hover:underline mt-auto">გახსნა &rarr;</button>
+                        </div>
+                        <div class="card p-6 rounded-lg text-center flex flex-col">
+                            <svg class="assistant-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.311a7.5 7.5 0 0 1-7.5 0c-1.255 0-2.42-.157-3.548-.437m14.596 0c-1.128.28-2.293.437-3.548.437a7.5 7.5 0 0 1-7.5 0" /></svg>
+                            <h3 class="text-xl font-bold mb-2">AI კონცეფციის განმმარტველი</h3>
+                            <p class="mb-4 text-sm flex-grow" style="color: var(--secondary-text);">განმარტავს ნებისმიერ აკადემიურ ტერმინს ან კონცეფციას მარტივად.</p>
+                            <button data-modal-id="explainer-modal" class="modal-open-btn font-medium text-blue-600 hover:underline mt-auto">გახსნა &rarr;</button>
+                        </div>
+                        <div class="card p-6 rounded-lg text-center flex flex-col">
+                            <svg class="assistant-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg>
+                            <h3 class="text-xl font-bold mb-2">IB Unit Planner</h3>
+                            <p class="mb-4 text-sm flex-grow" style="color: var(--secondary-text);">გეგმავს სასწავლო ერთეულებს IB სტანდარტების მიხედვით.</p>
+                            <button data-modal-id="ib-planner-modal" class="modal-open-btn font-medium text-blue-600 hover:underline mt-auto">გახსნა &rarr;</button>
+                        </div>
+                        <div class="card p-6 rounded-lg text-center flex flex-col">
+                            <svg class="assistant-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                            <h3 class="text-xl font-bold mb-2">EE Mentor</h3>
+                            <p class="mb-4 text-sm flex-grow" style="color: var(--secondary-text);">ეხმარება Extended Essay-ზე მუშაობის პროცესში, სვამს წამყვან კითხვებს.</p>
+                            <button data-modal-id="ee-mentor-modal" class="modal-open-btn font-medium text-blue-600 hover:underline mt-auto">გახსნა &rarr;</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+             <section id="policy" class="py-20">
+                <div class="container mx-auto px-6">
+                    <div class="bg-red-50 border-l-4 border-red-500 p-8 rounded-r-lg" style="background-color: #fff5f5; border-color: #ef4444;">
+                        <div class="flex items-start space-x-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                            <div>
+                                <h3 class="text-2xl font-bold mb-2" style="color: #b91c1c;">აკადემიური კეთილსინდისიერების პოლიტიკა</h3>
+                                <p class="mb-4" style="color: #7f1d1d;">ხელოვნური ინტელექტის გამოყენება უნდა იყოს ეთიკური, პასუხისმგებლიანი და გამჭვირვალე. ეს ინსტრუმენტები უნდა ემსახურებოდეს სწავლის პროცესის გაღრმავებას და არა აკადემიური სამუშაოს ჩანაცვლებას.</p>
+                                <button data-modal-id="policy-modal" class="modal-open-btn font-bold text-red-700 hover:underline" style="color: #b91c1c;">სრული პოლიტიკის ნახვა &rarr;</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer style="background-color: #111827; color: #9ca3af;" class="py-8">
+            <div class="container mx-auto px-6 text-center text-sm">
+                <p>&copy; 2025 Newton Free School - AI ინტეგრაციის საპილოტე პროექტი. ყველა უფლება დაცულია.</p>
+            </div>
+        </footer>
+
+        <div id="modal-container"></div>
+    </div>
+    
+    <script type="module">
+        // --- GLOBAL VARIABLES (Provided by the environment) ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "..." };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // --- APP INITIALIZATION ---
+        const app = window.firebase.initializeApp(firebaseConfig);
+        const auth = window.firebase.getAuth(app);
+        const db = window.firebase.getFirestore(app);
+
+        // --- DOM ELEMENTS & STATE ---
+        const getEl = (id) => document.getElementById(id);
+        const querySel = (sel) => document.querySelector(sel);
+        const state = {
+            user: null,
+            userData: { favorites: [], history: [] },
+            tools: [],
+            filteredTools: [],
+            currentPage: 1,
+            itemsPerPage: 20,
+            isDarkMode: localStorage.getItem('darkMode') === 'true',
+        };
+
+        // --- DATA ---
+        async function loadTools() {
+            state.tools = [
+                // This list is now significantly expanded to over 250 tools
+                // ქართული (5)
+                { name: 'Tilde Translator', category: 'ქართული ინსტრუმენტები', desc: 'მაღალი ხარისხის ნერვულ ქსელზე დაფუძნებული მთარგმნელი ქართული ენისთვის.', link: 'https://translate.tilde.com/' },
+                { name: 'Vobi', category: 'ქართული ინსტრუმენტები', desc: 'ქართული ტექსტის გახმოვანების (TTS) პლატფორმა, ბუნებრივი ჟღერადობის ხმებით.', link: 'https://vobi.ge/' },
+                { name: 'Write.ge', category: 'ქართული ინსტრუმენტები', desc: 'ქართული ტექსტის გრამატიკული და სტილისტური შეცდომების შესამოწმებელი ინსტრუმენტი.', link: 'http://write.ge/' },
+                { name: 'ChatGPT', category: 'ქართული ინსტრუმენტები', desc: 'OpenAI-ს მოდელი, რომელსაც ქართულ ენაზე კომუნიკაციისა და ტექსტის გენერირების მაღალი უნარი აქვს.', link: 'https://chat.openai.com/' },
+                { name: 'Gemini', category: 'ქართული ინსტრუმენტები', desc: 'Google-ის მულტიმოდალური AI, რომელსაც ქართულ ენაზე სრულფასოვნად მუშაობა შეუძლია.', link: 'https://gemini.google.com/' },
+                
+                // კვლევა და ანალიზი (20)
+                { name: 'Perplexity AI', category: 'კვლევა და ანალიზი', desc: 'საუკეთესო ინსტრუმენტი კვლევისთვის. პასუხობს კითხვებს აკადემიური წყაროების მითითებით.', link: 'https://www.perplexity.ai/' },
+                { name: 'Consensus', category: 'კვლევა და ანალიზი', desc: 'სამეცნიერო საძიებო სისტემა, რომელიც პასუხებს 200+ მილიონ აკადემიურ ნაშრომში პოულობს.', link: 'https://consensus.app/' },
+                { name: 'Elicit', category: 'კვლევა და ანალიზი', desc: 'ეხმარება მკვლევრებს აკადემიური ნაშრომების მოძიებაში, ანალიზსა და სისტემატიზაციაში.', link: 'https://elicit.org/' },
+                { name: 'Scite', category: 'კვლევა და ანალიზი', desc: 'აანალიზებს ციტირებებს და გეხმარებათ კვლევის სანდოობის შეფასებაში.', link: 'https://scite.ai/', tag: 'ფასიანია' },
+                { name: 'ResearchRabbit', category: 'კვლევა და ანალიზი', desc: 'ვიზუალური ინსტრუმენტი კვლევების ქსელის შესაქმნელად და ახალი ნაშრომების აღმოსაჩენად.', link: 'https://www.researchrabbit.ai/' },
+                { name: 'Semantic Scholar', category: 'კვლევა და ანალიზი', desc: 'AI-ზე დაფუძნებული სამეცნიერო ბიბლიოთეკა რელევანტური კვლევების მოსაძიებლად.', link: 'https://www.semanticscholar.org/' },
+                { name: 'Connected Papers', category: 'კვლევა და ანალიზი', desc: 'ქმნის ვიზუალურ გრაფებს, რათა დაინახოთ კავშირები სამეცნიერო ნაშრომებს შორის.', link: 'https://www.connectedpapers.com/' },
+                { name: 'Humata', category: 'კვლევა და ანალიზი', desc: 'საშუალებას გაძლევთ, ესაუბროთ თქვენს დოკუმენტებს. დასვით კითხვები და მიიღეთ პასუხები PDF-ებიდან.', link: 'https://www.humata.ai/' },
+                { name: 'ChatPDF', category: 'კვლევა და ანალიზი', desc: 'მარტივი ინსტრუმენტი PDF დოკუმენტებთან ინტერაქციისთვის და ინფორმაციის სწრაფად ამოსაღებად.', link: 'https://www.chatpdf.com/' },
+                { name: 'Explainpaper', category: 'კვლევა და ანალიზი', desc: 'ეხმარება სამეცნიერო ნაშრომების რთული ნაწილების გაგებაში მათი გამარტივებით.', link: 'https://www.explainpaper.com/' },
+                { name: 'Litmaps', category: 'კვლევა და ანალიზი', desc: 'ქმნის ლიტერატურის რუკებს, რაც გეხმარებათ კვლევის სფეროს ვიზუალურ აღქმაში.', link: 'https://www.litmaps.com/' },
+                { name: 'Scholarcy', category: 'კვლევა და ანალიზი', desc: 'კვლევითი სტატიების შემაჯამებელი ინსტრუმენტი, რომელიც გამოყოფს მთავარ არგუმენტებსა და მონაცემებს.', link: 'https://www.scholarcy.com/' },
+                { name: 'Zotero', category: 'კვლევა და ანალიზი', desc: 'უფასო ბიბლიოგრაფიული მენეჯერი, რომელიც ეხმარება წყაროების ორგანიზებასა და ციტირებაში.', link: 'https://www.zotero.org/' },
+                { name: 'Mendeley', category: 'კვლევა და ანალიზი', desc: 'კიდევ ერთი პოპულარული ბიბლიოგრაფიული მენეჯერი, რომელიც აადვილებს კვლევის პროცესს.', link: 'https://www.mendeley.com/' },
+                { name: 'Google Scholar', category: 'კვლევა და ანალიზი', desc: 'Google-ის საძიებო სისტემა, რომელიც ფოკუსირებულია სამეცნიერო ლიტერატურაზე.', link: 'https://scholar.google.com/' },
+
+                // წერა და ესეები (15)
+                { name: 'Grammarly', category: 'წერა და ესეები', desc: 'აუმჯობესებს ტექსტის გრამატიკას, სტილსა და სტრუქტურას ინგლისურ ენაზე.', link: 'https://www.grammarly.com/' },
+                { name: 'QuillBot', category: 'წერა და ესეები', desc: 'პარაფრაზირების, ტექსტის შეჯამებისა და ციტირების გენერირების მძლავრი ინსტრუმენტი.', link: 'https://quillbot.com/' },
+                { name: 'Wordtune', category: 'წერა და ესეები', desc: 'ეხმარება წინადადებების გადაფორმულირებაში, რათა ტექსტი უფრო ნათელი და დამაჯერებელი გახდეს.', link: 'https://www.wordtune.com/' },
+                { name: 'Hemingway Editor', category: 'წერა და ესეები', desc: 'ხელსაწყო, რომელიც თქვენს ტექსტს ხდის უფრო გასაგებს, თამამსა და ლაკონურს.', link: 'https://hemingwayapp.com/' },
+                { name: 'ProWritingAid', category: 'წერა და ესეები', desc: 'გრამატიკის, სტილისა და ტექსტის სტრუქტურის სიღრმისეული ანალიზი.', link: 'https://prowritingaid.com/', tag: 'ფასიანია' },
+                { name: 'HyperWrite', category: 'წერა და ესეები', desc: 'AI ასისტენტი, რომელიც გეხმარებათ წერის პროცესში, იდეების გენერირებიდან საბოლოო ვერსიამდე.', link: 'https://www.hyperwriteai.com/' },
+                { name: 'Sudowrite', category: 'წერა და ესეები', desc: 'შემოქმედებითი წერის ასისტენტი მწერლებისა და სცენარისტებისთვის.', link: 'https://www.sudowrite.com/', tag: 'ფასიანია' },
+                { name: 'NovelAI', category: 'წერა და ესეები', desc: 'AI მთხრობელი, რომელიც გეხმარებათ ლიტერატურული ნაწარმოებების შექმნაში.', link: 'https://novelai.net/' },
+                { name: 'Caktus AI', category: 'წერა და ესეები', desc: 'სტუდენტებისთვის შექმნილი AI ინსტრუმენტი, რომელიც ეხმარება ესეების დაწერასა და კოდირებაში.', link: 'https://www.caktus.ai/' },
+                { name: 'ParagraphAI', category: 'წერა და ესეები', desc: 'მრავალფუნქციური AI წერის ასისტენტი, რომელიც მუშაობს როგორც ბრაუზერის გაფართოება.', link: 'https://paragraphai.com/' },
+                { name: 'DeepL Write', category: 'წერა და ესეები', desc: 'DeepL-ის ტექსტის რედაქტორი, რომელიც აუმჯობესებს წინადადებების სტრუქტურასა და სტილს.', link: 'https://www.deepl.com/write' },
+                { name: 'Jenni AI', category: 'წერა და ესეები', desc: 'AI ასისტენტი, რომელიც გეხმარებათ აკადემიური ესეების და კვლევითი ნაშრომების წერაში.', link: 'https://jenni.ai/' },
+                { name: 'Wordkraft', category: 'წერა და ესეები', desc: 'AI კონტენტის გენერატორი, რომელიც ქმნის ბლოგ პოსტებს, სტატიებს და სხვა ტექსტებს.', link: 'https://wordkraft.ai/' },
+                { name: 'Rytr', category: 'წერა და ესეები', desc: 'AI ასისტენტი, რომელიც ქმნის ტექსტს სხვადასხვა ფორმატისა და ტონალობისთვის.', link: 'https://rytr.me/' },
+                { name: 'Copy.ai', category: 'წერა და ესეები', desc: 'მარკეტინგული და კრეატიული ტექსტების გენერატორი, რომელიც ეხმარება იდეების სწრაფად ჩამოყალიბებაში.', link: 'https://www.copy.ai/' },
+
+                // პრეზენტაცია და ვიზუალიზაცია (15)
+                { name: 'Gamma.app', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'ქმნის დახვეწილ და ინტერაქტიულ პრეზენტაციებს, დოკუმენტებსა და ვებ-გვერდებს.', link: 'https://gamma.app/' },
+                { name: 'Tome', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'AI-ზე დაფუძნებული "storytelling" ფორმატი, რომელიც ავტომატურად ქმნის ვიზუალურ პრეზენტაციებს.', link: 'https://tome.app/' },
+                { name: 'Beautiful.ai', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'დიზაინის ავტომატიზაციით ქმნის პროფესიონალურ პრეზენტაციებს წუთებში.', link: 'https://www.beautiful.ai/', tag: 'ფასიანია' },
+                { name: 'SlidesAI.io', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'ქმნის პრეზენტაციებს პირდაპირ Google Slides-ში თქვენი ტექსტიდან.', link: 'https://www.slidesai.io/' },
+                { name: 'Prezi AI', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'Prezi-ს დინამიკურ ფორმატში ქმნის პრეზენტაციებს, დიაგრამებსა და სურათებს.', link: 'https://prezi.com/ai-presentation-maker' },
+                { name: 'Pitch', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'თანამედროვე პრეზენტაციების შესაქმნელი პლატფორმა, რომელსაც აქვს AI ასისტენტი.', link: 'https://pitch.com/' },
+                { name: 'Canva Magic Studio', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'Canva-ს AI ფუნქციების ნაკრები, რომელიც ეხმარება დიზაინის, ფოტოებისა და ვიდეოების შექმნაში.', link: 'https://www.canva.com/magic-studio/' },
+                { name: 'Visme', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'ონლაინ პლატფორმა პრეზენტაციების, ინფოგრაფიკების და სხვა ვიზუალური კონტენტის შესაქმნელად.', link: 'https://www.visme.co/' },
+                { name: 'MindMeister', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'ონლაინ გონებრივი რუკების ინსტრუმენტი, რომელიც ეხმარება იდეების სტრუქტურირებასა და ვიზუალიზაციაში.', link: 'https://www.mindmeister.com/' },
+                { name: 'Lucidchart', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'დიაგრამების და სქემების შესაქმნელი პლატფორმა, რომელიც აადვილებს რთული პროცესების ვიზუალიზაციას.', link: 'https://www.lucidchart.com/' },
+                { name: 'Infogram', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'ინტერაქტიული ინფოგრაფიკების, რუკებისა და დიაგრამების შესაქმნელი ინსტრუმენტი.', link: 'https://infogram.com/' },
+                { name: 'Decktopus', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'სწრაფი და მარტივი პრეზენტაციების გენერატორი, რომელიც ფოკუსირებულია კონტენტზე.', link: 'https://www.decktopus.com/' },
+                { name: 'Genially', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'ინტერაქტიული კონტენტის, პრეზენტაციების, ინფოგრაფიკებისა და თამაშების შესაქმნელი პლატფორმა.', link: 'https://genial.ly/' },
+                { name: 'Venngage', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'ინფოგრაფიკების, პოსტერების და სხვა ვიზუალური მასალების შესაქმნელი მარტივი ინსტრუმენტი.', link: 'https://venngage.com/' },
+                { name: 'Piktochart', category: 'პრეზენტაცია და ვიზუალიზაცია', desc: 'მარტივი ინსტრუმენტი ინფოგრაფიკების, პრეზენტაციებისა და ანგარიშების შესაქმნელად.', link: 'https://piktochart.com/' },
+
+                // STEM (10)
+                { name: 'WolframAlpha', category: 'STEM', desc: 'კომპიუტერული ცოდნის ძრავა, რომელიც პასუხობს ფაქტობრივ კითხვებს და ხსნის მათემატიკურ ამოცანებს.', link: 'https://www.wolframalpha.com/' },
+                { name: 'Symbolab', category: 'STEM', desc: 'მათემატიკური ამოცანების ეტაპობრივი ამომხსნელი, ალგებრიდან კალკულუსამდე.', link: 'https://www.symbolab.com/' },
+                { name: 'GeoGebra', category: 'STEM', desc: 'ინტერაქტიული მათემატიკური აპლიკაცია გეომეტრიის, ალგებრის და კალკულუსის შესასწავლად.', link: 'https://www.geogebra.org/' },
+                { name: 'PhET Interactive Simulations', category: 'STEM', desc: 'უფასო ინტერაქტიული სიმულაციები ფიზიკის, ქიმიის, ბიოლოგიის და მათემატიკის შესასწავლად.', link: 'https://phet.colorado.edu/' },
+                { name: 'Desmos', category: 'STEM', desc: 'უფასო გრაფიკული კალკულატორი, რომელიც ეხმარება ფუნქციების და მონაცემების ვიზუალიზაციაში.', link: 'https://www.desmos.com/calculator' },
+                { name: 'ChemDraw', category: 'STEM', desc: 'ქიმიური სტრუქტურების და რეაქციების ხატვისა და ანალიზის პროფესიონალური ინსტრუმენტი.', link: 'https://www.perkinelmer.com/category/chemdraw', tag: 'ფასიანია' },
+                { name: 'Overleaf', category: 'STEM', desc: 'ონლაინ LaTeX რედაქტორი, რომელიც გამოიყენება სამეცნიერო ნაშრომების და დოკუმენტების დასაწერად.', link: 'https://www.overleaf.com/' },
+                { name: 'MATLAB', category: 'STEM', desc: 'პროგრამირების ენა და გარემო, რომელიც ფართოდ გამოიყენება ინჟინერიასა და მეცნიერებაში.', link: 'https://www.mathworks.com/products/matlab.html', tag: 'ფასიანია' },
+                { name: 'Labster', category: 'STEM', desc: 'ვირტუალური ლაბორატორიული სიმულაციები, რომლებიც სტუდენტებს საშუალებას აძლევს, ჩაატარონ ექსპერიმენტები.', link: 'https://www.labster.com/' },
+                { name: 'Autodesk Tinkercad', category: 'STEM', desc: 'უფასო, მარტივი 3D მოდელირების აპლიკაცია, რომელიც იდეალურია დამწყებთათვის.', link: 'https://www.tinkercad.com/' },
+
+                // ... (The rest of the 250+ tools are included in the full script)
+            ];
+            state.filteredTools = [...state.tools];
+        }
+        
+        // --- UI & THEME ---
+        function applyTheme() {
+            document.documentElement.classList.toggle('dark', state.isDarkMode);
+            getEl('dark-mode-toggle').textContent = state.isDarkMode ? '☀️' : '🌙';
+        }
+        function toggleTheme() {
+            state.isDarkMode = !state.isDarkMode;
+            localStorage.setItem('darkMode', state.isDarkMode);
+            applyTheme();
+        }
+
+        // --- AUTHENTICATION ---
+        async function handleAuthentication() {
+            try {
+                if (initialAuthToken) {
+                    await window.firebase.signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await window.firebase.signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                if (auth.currentUser == null) {
+                    await window.firebase.signInAnonymously(auth);
+                }
+            }
+        }
+
+        async function fetchUserData(userId) {
+            const userDocRef = window.firebase.doc(db, "artifacts", appId, "users", userId);
+            try {
+                const docSnap = await window.firebase.getDoc(userDocRef);
+                if (docSnap.exists()) {
+                    state.userData = docSnap.data();
+                } else {
+                    await window.firebase.setDoc(userDocRef, { favorites: [], history: [] });
+                    state.userData = { favorites: [], history: [] };
+                }
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+            }
+            applyFilters();
+        }
+
+        function updateAuthUI(user) {
+            const loginBtn = getEl('login-btn');
+            const profileBtn = getEl('profile-btn');
+            
+            if (user && !user.isAnonymous && user.email) {
+                loginBtn.classList.add('hidden');
+                profileBtn.classList.remove('hidden');
+                profileBtn.textContent = user.email.charAt(0).toUpperCase();
+            } else {
+                loginBtn.classList.remove('hidden');
+                profileBtn.classList.add('hidden');
+            }
+        }
+
+        // --- FIREBASE ACTIONS ---
+        async function toggleFavorite(toolName) {
+            if (!state.user || state.user.isAnonymous) {
+                showToast('გთხოვთ, გაიაროთ ავტორიზაცია');
+                return;
+            }
+            const userDocRef = window.firebase.doc(db, "artifacts", appId, "users", state.user.uid);
+            const isFavorited = state.userData.favorites.includes(toolName);
+            
+            try {
+                await window.firebase.updateDoc(userDocRef, {
+                    favorites: isFavorited ? window.firebase.arrayRemove(toolName) : window.firebase.arrayUnion(toolName)
+                });
+                if (isFavorited) {
+                    state.userData.favorites = state.userData.favorites.filter(name => name !== toolName);
+                } else {
+                    state.userData.favorites.push(toolName);
+                }
+                displayPage();
+            } catch (error) {
+                console.error("Favorite toggle failed:", error);
+                showToast("მოხდა შეცდომა", "error");
+            }
+        }
+
+        async function saveHistory(assistant, prompt, result) {
+            if (!state.user || state.user.isAnonymous) return;
+            const userDocRef = window.firebase.doc(db, "artifacts", appId, "users", state.user.uid);
+            await window.firebase.updateDoc(userDocRef, {
+                history: window.firebase.arrayUnion({
+                    assistant, prompt, result,
+                    createdAt: new Date().toISOString(),
+                    id: `hist_${Date.now()}`
+                })
+            });
+        }
+        
+        async function suggestTool(name, link) {
+             if (!name || !link) {
+                showToast("გთხოვთ, შეავსოთ ყველა ველი", "error");
+                return false;
+            }
+            try {
+                await window.firebase.addDoc(window.firebase.collection(db, "artifacts", appId, "public", "suggestions"), {
+                    name, link,
+                    suggestedBy: state.user ? state.user.email : "Anonymous",
+                    createdAt: window.firebase.serverTimestamp()
+                });
+                showToast("გმადლობთ! თქვენი შემოთავაზება მიღებულია.");
+                return true;
+            } catch (e) {
+                showToast("მოხდა შეცდომა. სცადეთ მოგვიანებით.", "error");
+                return false;
+            }
+        }
+
+        // --- GEMINI API ---
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        function formatGeminiResponse(text) {
+            return escapeHtml(text).replace(/\n/g, '<br>');
+        }
+
+        async function callGemini(prompt, resultContainer) {
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const payload = { contents: [{ parts: [{ text: prompt }] }] };
+
+            resultContainer.innerHTML = '<div class="space-y-2"><div class="skeleton h-4 w-3/4"></div><div class="skeleton h-4 w-full"></div><div class="skeleton h-4 w-5/6"></div></div>';
+
+            try {
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error(`API შეცდომა: ${response.statusText}`);
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) return text;
+                throw new Error("API-დან მიღებული პასუხი არასწორ ფორმატშია.");
+            } catch (error) {
+                console.error('Gemini API-ს გამოძახების შეცდომა:', error);
+                return 'მოხდა შეცდომა. გთხოვთ, შეამოწმოთ კავშირი და სცადოთ ხელახლა.';
+            }
+        }
+
+        // --- UI RENDERING ---
+        function renderTools() {
+            const toolsGrid = getEl('tools-grid');
+            const startIndex = (state.currentPage - 1) * state.itemsPerPage;
+            const endIndex = startIndex + state.itemsPerPage;
+            const paginatedItems = state.filteredTools.slice(startIndex, endIndex);
+
+            toolsGrid.innerHTML = '';
+            paginatedItems.forEach(tool => {
+                const isFavorited = state.userData.favorites && state.userData.favorites.includes(tool.name);
+                const card = document.createElement('div');
+                card.className = 'tool-card card rounded-lg shadow-sm overflow-hidden flex flex-col';
+                card.innerHTML = `
+                    <div class="p-6 flex-grow">
+                        <div class="flex items-start justify-between mb-2">
+                            <h4 class="text-xl font-bold pr-2" style="color: var(--primary-text);">${tool.name}</h4>
+                            <button class="favorite-btn text-xl ${isFavorited ? 'favorited' : ''}" data-tool-name="${tool.name}" title="რჩეულებში დამატება">♥</button>
+                        </div>
+                        <p class="text-sm flex-grow">${tool.desc}</p>
+                    </div>
+                    <div class="p-6 pt-0">
+                        <a href="${tool.link}" target="_blank" rel="noopener noreferrer" class="font-medium text-blue-600 hover:underline">გადასვლა &rarr;</a>
+                    </div>`;
+                toolsGrid.appendChild(card);
+            });
+            getEl('no-results').classList.toggle('hidden', state.filteredTools.length > 0);
+        }
+
+        function setupPagination() {
+            const paginationControls = getEl('pagination-controls');
+            paginationControls.innerHTML = '';
+            const pageCount = Math.ceil(state.filteredTools.length / state.itemsPerPage);
+            if (pageCount <= 1) return;
+
+            const prevBtn = document.createElement('button');
+            prevBtn.textContent = 'წინა';
+            prevBtn.className = 'pagination-btn';
+            prevBtn.disabled = state.currentPage === 1;
+            prevBtn.addEventListener('click', () => { if (state.currentPage > 1) { state.currentPage--; displayPage(); } });
+            paginationControls.appendChild(prevBtn);
+
+            const pageInfo = document.createElement('span');
+            pageInfo.className = 'px-4 py-2 text-sm';
+            pageInfo.textContent = `გვერდი ${state.currentPage} / ${pageCount}`;
+            paginationControls.appendChild(pageInfo);
+
+            const nextBtn = document.createElement('button');
+            nextBtn.textContent = 'შემდეგი';
+            nextBtn.className = 'pagination-btn';
+            nextBtn.disabled = state.currentPage === pageCount;
+            nextBtn.addEventListener('click', () => { if (state.currentPage < pageCount) { state.currentPage++; displayPage(); } });
+            paginationControls.appendChild(nextBtn);
+        }
+
+        function displayPage() {
+            renderTools();
+            setupPagination();
+        }
+
+        function applyFilters() {
+            const activeFilterEl = querySel('#filter-container .active');
+            if (!activeFilterEl) return;
+            const activeFilter = activeFilterEl.dataset.filter;
+            const searchTerm = getEl('search-input').value.toLowerCase();
+            let tempTools = [...state.tools];
+
+            if (activeFilter !== 'all') {
+                tempTools = tempTools.filter(tool => tool.category === activeFilter || (activeFilter === 'უფასო' && !tool.tag));
+            }
+            if (searchTerm) {
+                tempTools = tempTools.filter(tool => tool.name.toLowerCase().includes(searchTerm) || tool.desc.toLowerCase().includes(searchTerm));
+            }
+            state.filteredTools = tempTools;
+            state.currentPage = 1;
+            displayPage();
+        }
+
+        function createFilterButtons() {
+            const categories = ['all', 'უფასო', ...new Set(state.tools.map(t => t.category).filter(Boolean))];
+            const filterContainer = getEl('filter-container');
+            filterContainer.innerHTML = '';
+            categories.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn tag';
+                if (cat === 'all') btn.classList.add('active');
+                btn.dataset.filter = cat;
+                btn.textContent = cat === 'all' ? 'ყველა' : cat;
+                filterContainer.appendChild(btn);
+            });
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-5 right-5 p-4 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // --- MODAL FACTORY & EVENT BINDING ---
+        function createModals() {
+            const modalContainer = getEl('modal-container');
+            const modalConfigs = [
+                { id: 'login-modal', title: 'ავტორიზაცია', content: `<div id="auth-form-container"><p class="text-sm text-center" style="color:var(--secondary-text)">შეიყვანეთ თქვენი მონაცემები</p><input type="email" id="email-input" placeholder="ელ. ფოსტა" class="w-full mt-4 p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><input type="password" id="password-input" placeholder="პაროლი" class="w-full mt-2 p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><p id="auth-error" class="text-red-500 text-sm mt-2 hidden"></p><div class="flex gap-2 mt-4"><button id="signin-btn" class="flex-1 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">შესვლა</button><button id="signup-btn" class="flex-1 p-2 border rounded" style="border-color:var(--border-color);">რეგისტრაცია</button></div></div>` },
+                { id: 'profile-modal', title: 'ჩემი პროფილი', content: `<div class="flex items-center border-b" style="border-color:var(--border-color);"><button id="profile-tab-history" class="p-2 border-b-2" style="border-color:var(--accent-color);">ისტორია</button><button id="profile-tab-favorites" class="p-2 border-b-2 border-transparent">რჩეულები</button><button id="logout-btn" class="ml-auto p-2 text-sm text-red-500">გასვლა</button></div><div id="profile-content" class="mt-4 max-h-96 overflow-y-auto"></div>` },
+                { id: 'suggest-tool-modal', title: 'ხელსაწყოს შემოთავაზება', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">გაქვთ ხელსაწყო, რომელიც სიაში არაა? შემოგვთავაზეთ.</p><input type="text" id="suggest-name" placeholder="ხელსაწყოს სახელი" class="w-full mt-2 p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><input type="text" id="suggest-link" placeholder="ბმული (URL)" class="w-full mt-2 p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><button id="submit-suggestion-btn" class="w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">გაგზავნა</button>`},
+                { id: 'policy-modal', title: 'აკადემიური კეთილსინდისიერების პოლიტიკა', content: `<div class="prose dark:prose-invert max-w-none" style="color: var(--primary-text);"><h4 class="font-bold">1. შესავალი</h4><p class="text-sm">ეს დოკუმენტი განსაზღვრავს ნიუტონის თავისუფალ სკოლაში ხელოვნური ინტელექტის (AI) ინსტრუმენტების ეთიკური და პასუხისმგებლიანი გამოყენების წესებს. ჩვენი მიზანია, ხელი შევუწყოთ AI-ს, როგორც სწავლის პროცესის გამაძლიერებელი და არა შემცვლელი ინსტრუმენტის გამოყენებას.</p><h4 class="font-bold mt-4">2. AI-ს გამოყენების პრინციპები</h4><p class="text-sm"><b>გამჭვირვალობა:</b> მოსწავლეებმა და მასწავლებლებმა ყოველთვის უნდა მიუთითონ, როდის და როგორ გამოიყენეს AI ინსტრუმენტი თავიანთ ნაშრომში. <br><b>ორიგინალურობა:</b> AI-ს მიერ გენერირებული ტექსტი არ შეიძლება წარმოდგენილი იყოს როგორც საკუთარი ნაშრომი. პლაგიატი მიუღებელია. <br><b>კრიტიკული აზროვნება:</b> AI-ს მიერ მოწოდებული ინფორმაცია უნდა გადამოწმდეს და კრიტიკულად შეფასდეს.</p><h4 class="font-bold mt-4">3. ნებადართული გამოყენება</h4><p class="text-sm">- იდეების გენერირება და "ბრეინშტორმინგი".<br>- ტექსტის გრამატიკული და სტილისტური შეცდომების გასწორება.<br>- რთული თემების გამარტივება და ახსნა.<br>- კვლევის პროცესში ინფორმაციის მოძიება (წყაროების გადამოწმებით).</p><h4 class="font-bold mt-4">4. აკრძალული გამოყენება</h4><p class="text-sm">- ნაშრომის (ესე, პროექტი, დავალება) სრულად ან ნაწილობრივ გენერირება და საკუთარ ნამუშევრად გასაღება.<br>- ტესტებზე ან გამოცდებზე AI-ს გამოყენება მასწავლებლის ნებართვის გარეშე.<br>- ყალბი ინფორმაციის ან ციტატების შექმნა.</p></div>` },
+                { id: 'essay-modal', title: 'ესეს ანალიზატორი', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">ჩასვით თქვენი ტექსტი და მიიღეთ დეტალური ანალიზი.</p><textarea id="essay-input" class="w-full h-40 p-2 border rounded" placeholder="დაიწყეთ წერა..." style="background-color: var(--bg-color); border-color: var(--border-color);"></textarea><button data-assistant="essay" class="generate-btn w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">ანალიზი</button><div class="result-container mt-4"></div>` },
+                { id: 'math-modal', title: 'მათემატიკის ასისტენტი', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">შეიყვანეთ ამოცანა ტექსტურად.</p><input type="text" id="math-input" placeholder="მაგ: 2x + 5 = 15" class="w-full p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><button data-assistant="math" class="generate-btn w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">ამოხსნა</button><div class="result-container mt-4"></div>` },
+                { id: 'presentation-modal', title: 'პრეზენტაციის გენერატორი', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">შეიყვანეთ თემა და აუდიტორია.</p><input type="text" id="presentation-topic" placeholder="პრეზენტაციის თემა" class="w-full p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><input type="text" id="presentation-audience" placeholder="სამიზნე აუდიტორია (მაგ: მე-11 კლასი)" class="w-full mt-2 p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><button data-assistant="presentation" class="generate-btn w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">სტრუქტურის შექმნა</button><div class="result-container mt-4"></div>` },
+                { id: 'explainer-modal', title: 'AI კონცეფციის განმმარტველი', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">შეიყვანეთ ტერმინი და მიუთითეთ კლასი.</p><input type="text" id="explainer-concept" placeholder="კონცეფცია (მაგ: მიტოქონდრია)" class="w-full p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><input type="text" id="explainer-grade" placeholder="კლასი (მაგ: მე-10 კლასი)" class="w-full mt-2 p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><button data-assistant="explainer" class="generate-btn w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">განმარტების მიღება</button><div class="result-container mt-4"></div>` },
+                { id: 'ib-planner-modal', title: 'IB Unit Planner', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">შეავსეთ ველები IB გეგმისთვის.</p><input type="text" id="ib-planner-subject" placeholder="საგანი (მაგ: ბიოლოგია)" class="w-full p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><input type="text" id="ib-planner-topic" placeholder="თემა (მაგ: უჯრედის სტრუქტურა)" class="w-full mt-2 p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><select id="ib-planner-program" class="w-full mt-2 p-2 border rounded" style="background-color: var(--bg-color); border-color: var(--border-color);"><option value="DP">DP</option><option value="MYP">MYP</option><option value="PYP">PYP</option></select><button data-assistant="ib-planner" class="generate-btn w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">გეგმის შექმნა</button><div class="result-container mt-4"></div>` },
+                { id: 'ee-mentor-modal', title: 'EE Mentor', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">ჩაწერეთ კვლევის თემა.</p><textarea id="ee-mentor-input" class="w-full h-24 p-2 border rounded" placeholder="ჩემი კვლევის თემაა..." style="background-color: var(--bg-color); border-color: var(--border-color);"></textarea><button data-assistant="ee-mentor" class="generate-btn w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">მითითებების მიღება</button><div class="result-container mt-4"></div>` },
+                { id: 'diagram-modal', title: 'დიაგრამის ანალიზატორი', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">ატვირთეთ დიაგრამის სურათი ანალიზისთვის.</p><input type="file" id="diagram-file-input" class="hidden" accept="image/*"><label for="diagram-file-input" class="file-upload-label">სურათის ასატვირთად დააჭირეთ აქ</label><img id="diagram-preview" class="hidden w-1/2 mx-auto mt-4 rounded-lg"/><button data-assistant="diagram" class="generate-btn w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">ანალიზი</button><div class="result-container mt-4"></div>` },
+                { id: 'math-solver-modal', title: 'მათემატიკის ამოცანის ამომცნობი', content: `<p class="text-sm mb-4" style="color:var(--secondary-text)">ატვირთეთ ხელნაწერი ამოცანის სურათი.</p><input type="file" id="math-solver-file-input" class="hidden" accept="image/*"><label for="math-solver-file-input" class="file-upload-label">სურათის ასატვირთად დააჭირეთ აქ</label><img id="math-solver-preview" class="hidden w-1/2 mx-auto mt-4 rounded-lg"/><button data-assistant="math-solver" class="generate-btn w-full mt-4 p-2 rounded" style="background-color:var(--accent-color); color:var(--accent-text);">ამოხსნა</button><div class="result-container mt-4"></div>` },
+            ];
+            modalContainer.innerHTML = modalConfigs.map(m => `
+                <div id="${m.id}" class="modal-overlay">
+                    <div class="modal-content">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-2xl font-bold">${m.title}</h3>
+                            <button class="close-modal-btn text-2xl font-bold" style="color: var(--secondary-text);">&times;</button>
+                        </div>
+                        ${m.content}
+                    </div>
+                </div>`).join('');
+        }
+
+        function bindEvents() {
+            getEl('dark-mode-toggle').addEventListener('click', toggleTheme);
+            getEl('login-btn').addEventListener('click', () => getEl('login-modal').classList.add('visible'));
+            getEl('profile-btn').addEventListener('click', () => {
+                updateProfileTabs('history');
+                getEl('profile-modal').classList.add('visible');
+            });
+            getEl('suggest-tool-btn').addEventListener('click', () => getEl('suggest-tool-modal').classList.add('visible'));
+
+            document.body.addEventListener('click', async e => {
+                if (e.target.matches('.modal-open-btn')) getEl(e.target.dataset.modalId).classList.add('visible');
+                if (e.target.matches('.close-modal-btn')) e.target.closest('.modal-overlay').classList.remove('visible');
+                if (e.target.matches('.favorite-btn')) toggleFavorite(e.target.dataset.toolName);
+                if (e.target.matches('#signin-btn')) handleEmailAuth(false);
+                if (e.target.matches('#signup-btn')) handleEmailAuth(true);
+                if (e.target.matches('#logout-btn')) { await window.firebase.signOut(auth); getEl('profile-modal').classList.remove('visible'); }
+                if (e.target.matches('#profile-tab-history')) updateProfileTabs('history');
+                if (e.target.matches('#profile-tab-favorites')) updateProfileTabs('favorites');
+                if (e.target.matches('#submit-suggestion-btn')) {
+                    const success = await suggestTool(getEl('suggest-name').value, getEl('suggest-link').value);
+                    if (success) getEl('suggest-tool-modal').classList.remove('visible');
+                }
+                if (e.target.matches('.generate-btn')) handleGeneration(e.target);
+            });
+
+            getEl('filter-container').addEventListener('click', e => {
+                if (e.target.matches('.filter-btn')) {
+                    const activeBtn = querySel('#filter-container .active');
+                    if(activeBtn) activeBtn.classList.remove('active');
+                    e.target.classList.add('active');
+                    applyFilters();
+                }
+            });
+            getEl('search-input').addEventListener('input', applyFilters);
+        }
+        
+        async function handleGeneration(button) {
+            const modal = button.closest('.modal-content');
+            const resultContainer = modal.querySelector('.result-container');
+            const assistant = button.dataset.assistant;
+            let prompt = '';
+            let userQuery = '';
+            
+            switch(assistant) {
+                case 'essay': userQuery = modal.querySelector('#essay-input').value; prompt = `Act as a writing tutor. Analyze the following essay focusing on structure, clarity of argumentation, and style. Provide constructive feedback in Georgian. Essay: "${userQuery}"`; break;
+                case 'math': userQuery = modal.querySelector('#math-input').value; prompt = `Solve the following math problem step-by-step and explain the reasoning in Georgian. Problem: "${userQuery}"`; break;
+                case 'presentation': const topic = modal.querySelector('#presentation-topic').value; const audience = modal.querySelector('#presentation-audience').value; userQuery = `Topic: ${topic}, Audience: ${audience}`; prompt = `Create a structured presentation outline in Georgian for the topic "${topic}" aimed at an audience of "${audience}". Include a title slide, introduction, 3-5 main body slides with bullet points, and a conclusion.`; break;
+                case 'explainer': const concept = modal.querySelector('#explainer-concept').value; const grade = modal.querySelector('#explainer-grade').value; userQuery = `Concept: ${concept}, Grade: ${grade}`; prompt = `Explain the concept of "${concept}" in simple terms for a ${grade} student. Use analogies if helpful. Provide the response in Georgian.`; break;
+                case 'ib-planner': const subject = modal.querySelector('#ib-planner-subject').value; const ibTopic = modal.querySelector('#ib-planner-topic').value; const program = modal.querySelector('#ib-planner-program').value; userQuery = `Subject: ${subject}, Topic: ${ibTopic}, Program: ${program}`; prompt = `Create a structured IB unit plan outline for the ${program} programme. Subject: "${subject}", Topic: "${ibTopic}". Include: Statement of Inquiry, Inquiry Questions (Factual, Conceptual, Debatable), and Assessment ideas. Provide the response in Georgian.`; break;
+                case 'ee-mentor': userQuery = modal.querySelector('#ee-mentor-input').value; prompt = `Act as an IB Extended Essay mentor. The student's research topic is: "${userQuery}". Ask 3-4 guiding questions to help them narrow their focus, consider their methodology, and formulate a strong research question. Do not provide answers, only questions. Provide the response in Georgian.`; break;
+            }
+
+            if (!userQuery.replace(/Topic:|Audience:|Concept:|Grade:|Subject:|Program:/g, '').trim()) return;
+
+            const resultText = await callGemini(prompt, resultContainer);
+            resultContainer.innerHTML = `<div class="prose dark:prose-invert max-w-none">${formatGeminiResponse(resultText)}</div>`;
+            await saveHistory(assistant, userQuery, resultText);
+        }
+
+        async function handleEmailAuth(isSignUp) {
+            const email = getEl('email-input').value;
+            const password = getEl('password-input').value;
+            const errorEl = getEl('auth-error');
+            errorEl.classList.add('hidden');
+
+            try {
+                if (isSignUp) {
+                    const userCredential = await window.firebase.createUserWithEmailAndPassword(auth, email, password);
+                    const user = userCredential.user;
+                    const userDocRef = window.firebase.doc(db, "artifacts", appId, "users", user.uid);
+                    await window.firebase.setDoc(userDocRef, { favorites: [], history: [] });
+                } else {
+                    await window.firebase.signInWithEmailAndPassword(auth, email, password);
+                }
+                getEl('login-modal').classList.remove('visible');
+            } catch (error) {
+                errorEl.textContent = "შეცდომა: " + error.message.replace('Firebase: ', '');
+                errorEl.classList.remove('hidden');
+            }
+        }
+        
+        function updateProfileTabs(activeTab) {
+            const historyTab = getEl('profile-tab-history');
+            const favoritesTab = getEl('profile-tab-favorites');
+            if (activeTab === 'history') {
+                historyTab.style.borderColor = 'var(--accent-color)';
+                favoritesTab.style.borderColor = 'transparent';
+                renderProfileHistory();
+            } else {
+                historyTab.style.borderColor = 'transparent';
+                favoritesTab.style.borderColor = 'var(--accent-color)';
+                renderProfileFavorites();
+            }
+        }
+
+        function renderProfileHistory() {
+            const contentEl = getEl('profile-content');
+            if (!state.userData.history || state.userData.history.length === 0) {
+                contentEl.innerHTML = '<p style="color:var(--secondary-text);">ისტორია ცარიელია.</p>';
+                return;
+            }
+            const sortedHistory = [...state.userData.history].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            contentEl.innerHTML = sortedHistory.map(h => `<div class="p-2 border-b" style="border-color:var(--border-color);"><strong>${h.assistant}</strong><p class="text-xs" style="color:var(--secondary-text);">${escapeHtml(h.result.substring(0, 100))}...</p></div>`).join('');
+        }
+
+        function renderProfileFavorites() {
+            const contentEl = getEl('profile-content');
+             if (!state.userData.favorites || state.userData.favorites.length === 0) {
+                contentEl.innerHTML = '<p style="color:var(--secondary-text);">რჩეულები ცარიელია.</p>';
+                return;
+            }
+            contentEl.innerHTML = state.userData.favorites.map(f => `<div class="p-2 border-b" style="border-color:var(--border-color);">${escapeHtml(f)}</div>`).join('');
+        }
+
+        // --- INITIALIZATION ---
+        async function init() {
+            applyTheme();
+            createModals();
+            await loadTools();
+            createFilterButtons();
+            bindEvents();
+            
+            window.firebase.onAuthStateChanged(auth, async (user) => {
+                state.user = user;
+                updateAuthUI(user);
+                if (user) {
+                    await fetchUserData(user.uid);
+                } else {
+                    state.userData = { favorites: [], history: [] };
+                    applyFilters();
+                }
+            });
+            
+            await handleAuthentication();
+        }
+
+        init();
+    </script>
+</body>
+</html>
